@@ -2,7 +2,6 @@ import yfinance as yf
 import streamlit as st
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 
 # =========================================
 # Helpers: formatting
@@ -29,12 +28,9 @@ def _num(x):
     return x if isinstance(x, (int, float, np.number)) else None
 
 # =========================================
-# Scoring helpers (0–100 for each metric)
+# Scoring helpers (same as yours)
 # =========================================
 def score_lower_is_better(value, target, loose_high):
-    """
-    100 at or below target; linearly decays to 0 by loose_high, capped 0–100.
-    """
     v = _num(value)
     if v is None:
         return None
@@ -42,13 +38,9 @@ def score_lower_is_better(value, target, loose_high):
         return 100.0
     if v >= loose_high:
         return 0.0
-    # linear between target and loose_high
     return max(0.0, 100.0 * (1 - (v - target) / (loose_high - target)))
 
 def score_higher_is_better(value, target, loose_low):
-    """
-    100 at or above target; decays to 0 by loose_low (for negative/low figures).
-    """
     v = _num(value)
     if v is None:
         return None
@@ -59,16 +51,11 @@ def score_higher_is_better(value, target, loose_low):
     return max(0.0, 100.0 * ((v - loose_low) / (target - loose_low)))
 
 def score_within_band_best(value, low, high, hard_low=None, hard_high=None):
-    """
-    100 if inside [low, high]; decays towards hard bounds if provided, else 0 outside.
-    Useful for things like Current Ratio (ideal band) or Beta (~1).
-    """
     v = _num(value)
     if v is None:
         return None
     if low <= v <= high:
         return 100.0
-    # decay to 0 by hard bounds
     if hard_low is None: hard_low = low - (high - low)
     if hard_high is None: hard_high = high + (high - low)
     if v < low:
@@ -81,40 +68,27 @@ def score_within_band_best(value, low, high, hard_low=None, hard_high=None):
         return max(0.0, 100.0 * (hard_high - v) / (hard_high - high))
 
 def score_beta(beta):
-    """
-    Best around 1.0. 100 at 0.8–1.2 band, decays to 0 by 0.4 and 1.8.
-    """
     return score_within_band_best(beta, low=0.8, high=1.2, hard_low=0.4, hard_high=1.8)
 
 def score_dividend_yield(y):
-    """
-    Simple income score. Caps benefit at ~6%. 3% -> ~100, 0% -> 0, 6%+ ~100.
-    """
     v = _num(y)
     if v is None:
         return None
-    # map 0..6 to 0..100, then cap
     return max(0.0, min(100.0, (v / 3.0) * 100.0)) if v <= 6 else 100.0
 
 def score_revenue_growth(g):
-    """
-    Growth score. 20%+ YoY => 100; 10% => 70; 0% => 40; negative => down to 0 by -20%.
-    """
     v = _num(g)
     if v is None:
         return None
     if v >= 20:
         return 100.0
     if v >= 10:
-        # 10..20 -> 70..100
         return 70.0 + (v - 10) * 3.0
     if v >= 0:
-        # 0..10 -> 40..70
         return 40.0 + v * 3.0
-    # negative: 0 down to -20 -> 40..0
     if v <= -20:
         return 0.0
-    return max(0.0, 40.0 + (v * 2.0))  # v is negative
+    return max(0.0, 40.0 + (v * 2.0))
 
 # =========================================
 # Streamlit UI
@@ -125,40 +99,43 @@ ticker_symbol = st.text_input("Enter Stock Symbol (e.g., AAPL, MSFT)", "AAPL")
 stock = yf.Ticker(ticker_symbol)
 st.header(f"Financial Data for {ticker_symbol}")
 
+# --- Use fast_info for reliable basics ---
+fast_info = {}
+try:
+    fast_info = stock.fast_info
+except Exception:
+    fast_info = {}
+
+# --- Use get_info for sector & extras ---
 info = {}
 try:
-    info = stock.info or {}
+    info = stock.get_info()
 except Exception:
     info = {}
 
-current_price = info.get('currentPrice', None)
-sector = info.get('sector', 'Unknown')
+# --- Core values ---
+current_price = fast_info.get("lastPrice", None)
+sector = info.get("sector", "Unknown")
+market_cap = fast_info.get("marketCap", None)
+pe_ratio = fast_info.get("peRatio", None)
+pb_ratio = fast_info.get("priceToBook", None)
+roe = info.get("returnOnEquity", None)
+debt_to_equity = info.get("debtToEquity", None)
+profit_margin = info.get("profitMargins", None)
+dividend_yield = info.get("dividendYield", None)
+operating_margin = info.get("operatingMargins", None)
+beta = fast_info.get("beta", info.get("beta", None))
+current_ratio = info.get("currentRatio", None)
 
-if current_price is not None:
-    st.write(f"**Current Stock Price:** ${current_price:.2f}")
-else:
-    st.write("**Current Stock Price:** N/A")
-
-# --- Pull metrics ---
-pe_ratio = info.get('trailingPE', 'N/A')
-pb_ratio = info.get('priceToBook', 'N/A')
-roe = info.get('returnOnEquity', 'N/A')
-debt_to_equity = info.get('debtToEquity', 'N/A')
-market_cap = info.get('marketCap', 'N/A')
-profit_margin = info.get('profitMargins', 'N/A')
-dividend_yield = info.get('dividendYield', 'N/A')
-operating_margin = info.get('operatingMargins', 'N/A')
-beta = info.get('beta', 'N/A')
-current_ratio = info.get('currentRatio', 'N/A')
-
-# --- Format numbers from yfinance conventions ---
+# --- Format percentages ---
 if isinstance(roe, (int, float)): roe *= 100
 if isinstance(profit_margin, (int, float)): profit_margin *= 100
 if isinstance(dividend_yield, (int, float)): dividend_yield *= 100
 if isinstance(operating_margin, (int, float)): operating_margin *= 100
-if isinstance(debt_to_equity, (int, float)): debt_to_equity /= 100  # yfinance often returns D/E in percent
+if isinstance(debt_to_equity, (int, float)) and debt_to_equity > 10:  
+    debt_to_equity /= 100  # normalize if it's a % not ratio
 
-# --- Hardcoded sector benchmarks (your original table) ---
+# --- Hardcoded sector benchmarks ---
 sector_benchmarks = {
     "Technology":      {"PE": 25, "PB": 6,  "ROE": 18, "ProfitMargin": 15},
     "Healthcare":      {"PE": 20, "PB": 4,  "ROE": 14, "ProfitMargin": 12},
@@ -171,16 +148,24 @@ sector_benchmarks = {
 benchmarks = sector_benchmarks.get(sector, sector_benchmarks["Unknown"])
 
 # =========================================
-# Compute Revenue Growth (YoY)
+# Compute Revenue Growth (YoY) safely
 # =========================================
 rev_growth = None
 try:
-    revenue_data = stock.financials.loc['Total Revenue']
-    if len(revenue_data) >= 2:
-        recent = float(revenue_data.iloc[0])
-        previous = float(revenue_data.iloc[1])
-        if previous != 0:
-            rev_growth = ((recent - previous) / previous) * 100
+    revenue_data = stock.financials
+    if not revenue_data.empty:
+        # Try to find a row containing "Revenue"
+        rev_row = None
+        for row in revenue_data.index:
+            if "Revenue" in row:
+                rev_row = row
+                break
+        if rev_row:
+            series = revenue_data.loc[rev_row]
+            if len(series) >= 2:
+                recent, previous = float(series.iloc[0]), float(series.iloc[1])
+                if previous != 0:
+                    rev_growth = ((recent - previous) / previous) * 100
 except Exception:
     pass
 
@@ -188,29 +173,18 @@ except Exception:
 # SCORING ENGINE
 # =========================================
 def compute_scores():
-    """
-    Returns (overall_score_0_100, detail_dict, reasons_list)
-    detail_dict has each metric score for transparency.
-    """
     details = {}
     reasons_pos, reasons_neg = [], []
 
-    # Valuation — lower better vs sector
     s_pe = score_lower_is_better(pe_ratio, target=benchmarks["PE"], loose_high=max(benchmarks["PE"] * 2.5, 10))
     s_pb = score_lower_is_better(pb_ratio, target=benchmarks["PB"], loose_high=max(benchmarks["PB"] * 3.0, 5))
-    # Profitability — higher better vs sector
     s_roe = score_higher_is_better(roe, target=benchmarks["ROE"], loose_low=0)
-    # Use the better of profit margin or operating margin if one is missing
     pm = profit_margin if _num(profit_margin) is not None else operating_margin
     s_margin = score_higher_is_better(pm, target=benchmarks["ProfitMargin"], loose_low=0)
-    # Growth
     s_growth = score_revenue_growth(rev_growth)
-    # Balance sheet health
     s_de = score_lower_is_better(debt_to_equity, target=0.5, loose_high=3.0)
     s_cr = score_within_band_best(current_ratio, low=1.5, high=3.0, hard_low=0.8, hard_high=5.0)
-    # Risk / Stability
     s_beta = score_beta(beta)
-    # Income
     s_div = score_dividend_yield(dividend_yield)
 
     components = {
@@ -225,7 +199,6 @@ def compute_scores():
         "Income (Dividend Yield)": (s_div, 0.05),
     }
 
-    # Reweight if some metrics are missing
     total_weight_available = sum(w for s, w in components.values() if s is not None and not np.isnan(s))
     if total_weight_available == 0:
         return 0.0, {}, ["No sufficient data to score."]
@@ -237,7 +210,6 @@ def compute_scores():
         adj_w = w / total_weight_available
         overall += s * adj_w
         details[name] = round(s, 1)
-        # reasons
         if s >= 75:
             reasons_pos.append(f"{name} strong ({s:.0f})")
         elif s <= 35:
@@ -276,7 +248,6 @@ st.write("Beta: ", format_value(beta, 0.8, 1.2), unsafe_allow_html=True)
 st.write("Current Ratio: ", format_value(current_ratio, 1.5, 3), unsafe_allow_html=True)
 st.write("Market Capitalization: $", market_cap)
 
-# Revenue growth
 if rev_growth is not None:
     st.write("Revenue Growth (YoY): ", format_value(rev_growth, 10, 100, is_percentage=True), unsafe_allow_html=True)
 else:
@@ -284,22 +255,13 @@ else:
 
 # --- Sector Benchmark Comparison ---
 st.subheader(f"📉 Sector Comparison ({sector})")
-st.markdown("**P/E Ratio:** " +
-            compare_to_sector(pe_ratio, benchmarks["PE"], higher_is_better=False),
-            unsafe_allow_html=True)
-st.markdown("**P/B Ratio:** " +
-            compare_to_sector(pb_ratio, benchmarks["PB"], higher_is_better=False),
-            unsafe_allow_html=True)
-st.markdown("**Return on Equity (ROE):** " +
-            compare_to_sector(roe, benchmarks["ROE"], higher_is_better=True),
-            unsafe_allow_html=True)
-st.markdown("**Profit Margin:** " +
-            compare_to_sector(profit_margin if _num(profit_margin) is not None else operating_margin,
-                              benchmarks["ProfitMargin"], higher_is_better=True),
-            unsafe_allow_html=True)
+st.markdown("**P/E Ratio:** " + compare_to_sector(pe_ratio, benchmarks["PE"], higher_is_better=False), unsafe_allow_html=True)
+st.markdown("**P/B Ratio:** " + compare_to_sector(pb_ratio, benchmarks["PB"], higher_is_better=False), unsafe_allow_html=True)
+st.markdown("**Return on Equity (ROE):** " + compare_to_sector(roe, benchmarks["ROE"], higher_is_better=True), unsafe_allow_html=True)
+st.markdown("**Profit Margin:** " + compare_to_sector(profit_margin if _num(profit_margin) is not None else operating_margin, benchmarks["ProfitMargin"], higher_is_better=True), unsafe_allow_html=True)
 
 # =========================================
-# NEW: Buy / Hold / Sell + Rating
+# Rating
 # =========================================
 st.subheader("🧭 Rating & Signal")
 st.markdown(
@@ -311,15 +273,11 @@ st.markdown(
     unsafe_allow_html=True
 )
 
-# Show component scores for transparency
 if detail_scores:
     st.markdown("**Component Scores**")
-    df_scores = pd.DataFrame(
-        {"Component": list(detail_scores.keys()), "Score": list(detail_scores.values())}
-    ).sort_values("Score", ascending=False)
+    df_scores = pd.DataFrame({"Component": list(detail_scores.keys()), "Score": list(detail_scores.values())}).sort_values("Score", ascending=False)
     st.dataframe(df_scores, use_container_width=True)
 
-# Reasons / Rationale
 for r in reasons:
     st.write("• " + r)
 
@@ -336,7 +294,13 @@ else:
 # --- Revenue trend chart ---
 try:
     st.subheader("📉 Total Revenue Over Time")
-    st.line_chart(stock.financials.loc['Total Revenue'], use_container_width=True)
-except KeyError:
+    if not stock.financials.empty:
+        rev_row = [row for row in stock.financials.index if "Revenue" in row]
+        if rev_row:
+            st.line_chart(stock.financials.loc[rev_row[0]], use_container_width=True)
+        else:
+            st.warning("Revenue row not found.")
+    else:
+        st.warning("Revenue data is not available.")
+except Exception:
     st.warning("Revenue data is not available.")
-
