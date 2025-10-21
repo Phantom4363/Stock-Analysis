@@ -75,6 +75,9 @@ def score_dividend_yield(y):
     v = _num(y)
     if v is None:
         return None
+    # Handle case where yield might be given as 0.02 (2%) or 2
+    if v < 1:
+        v *= 100
     return max(0.0, min(100.0, (v / 3.0) * 100.0)) if v <= 6 else 100.0
 
 def score_revenue_growth(g):
@@ -125,7 +128,7 @@ current_ratio = info.get("currentRatio", "N/A")
 # --- Convert ratios to percentages where needed ---
 if isinstance(roe, (int, float)): roe *= 100
 if isinstance(profit_margin, (int, float)): profit_margin *= 100
-if isinstance(dividend_yield, (int, float)): dividend_yield *= 100
+# FIX: removed dividend_yield *= 100 (was causing 100x inflation)
 if isinstance(operating_margin, (int, float)): operating_margin *= 100
 if isinstance(debt_to_equity, (int, float)): debt_to_equity /= 100
 
@@ -249,7 +252,7 @@ st.write("P/B Ratio: ", format_value(pb_ratio, 1, 3), unsafe_allow_html=True)
 st.write("Return on Equity (ROE): ", format_value(roe, 10, 20, is_percentage=True), unsafe_allow_html=True)
 st.write("Debt-to-Equity Ratio: ", format_value(debt_to_equity, 0.5, 1.5), unsafe_allow_html=True)
 st.write("Profit Margin: ", format_value(profit_margin, 10, 20, is_percentage=True), unsafe_allow_html=True)
-st.write("Dividend Yield: ", format_value(dividend_yield, 2, 10, is_percentage=True), unsafe_allow_html=True)
+st.write("Dividend Yield: ", format_value(dividend_yield if dividend_yield < 1 else dividend_yield, 2, 10, is_percentage=True), unsafe_allow_html=True)
 st.write("Operating Margin: ", format_value(operating_margin, 15, 25, is_percentage=True), unsafe_allow_html=True)
 st.write("Beta: ", format_value(beta, 0.8, 1.2), unsafe_allow_html=True)
 st.write("Current Ratio: ", format_value(current_ratio, 1.5, 3), unsafe_allow_html=True)
@@ -309,3 +312,4 @@ try:
     st.line_chart(stock.financials.loc['Total Revenue'], use_container_width=True)
 except KeyError:
     st.warning("Revenue data is not available.")
+
