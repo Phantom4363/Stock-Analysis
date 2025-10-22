@@ -57,8 +57,10 @@ def score_within_band_best(value, low, high, hard_low=None, hard_high=None):
         return None
     if low <= v <= high:
         return 100.0
-    if hard_low is None: hard_low = low - (high - low)
-    if hard_high is None: hard_high = high + (high - low)
+    if hard_low is None:
+        hard_low = low - (high - low)
+    if hard_high is None:
+        hard_high = high + (high - low)
     if v < low:
         if v <= hard_low:
             return 0.0
@@ -95,7 +97,6 @@ def score_revenue_growth(g):
 # Streamlit UI
 # =========================================
 st.title("📊 Fundamental Stock Analysis Dashboard")
-
 ticker_symbol = st.text_input("Enter Stock Symbol (e.g., AAPL, MSFT)", "AAPL")
 stock = yf.Ticker(ticker_symbol)
 
@@ -110,7 +111,6 @@ except Exception:
 
 current_price = fast_info.get("lastPrice", info.get("currentPrice", None))
 sector = info.get("sector", "Unknown")
-
 pe_ratio = fast_info.get("peRatio", info.get("trailingPE", "N/A"))
 pb_ratio = fast_info.get("priceToBook", "N/A")
 roe = info.get("returnOnEquity", "N/A")
@@ -123,11 +123,16 @@ beta = info.get("beta", "N/A")
 current_ratio = info.get("currentRatio", "N/A")
 
 # --- Convert ratios to percentages where needed ---
-if isinstance(roe, (int, float)): roe *= 100
-if isinstance(profit_margin, (int, float)): profit_margin *= 100
-if isinstance(dividend_yield, (int, float)): dividend_yield *= 100
-if isinstance(operating_margin, (int, float)): operating_margin *= 100
-if isinstance(debt_to_equity, (int, float)): debt_to_equity /= 100
+if isinstance(roe, (int, float)):
+    roe *= 100
+if isinstance(profit_margin, (int, float)):
+    profit_margin *= 100
+if isinstance(dividend_yield, (int, float)):
+    dividend_yield *= 100
+if isinstance(operating_margin, (int, float)):
+    operating_margin *= 100
+if isinstance(debt_to_equity, (int, float)):
+    debt_to_equity /= 100
 
 # =========================================
 # NEW: Show Key Metrics at Top
@@ -137,12 +142,10 @@ if current_price:
     st.write(f"**Current Price:** ${current_price:.2f}")
 else:
     st.write("**Current Price:** N/A")
-
 if pe_ratio and pe_ratio != "N/A":
     st.write(f"**P/E Ratio:** {pe_ratio:.2f}")
 else:
     st.write("**P/E Ratio:** N/A")
-
 if pb_ratio and pb_ratio != "N/A":
     st.write(f"**P/B Ratio:** {pb_ratio:.2f}")
 else:
@@ -152,13 +155,13 @@ else:
 # Sector Benchmarks
 # =========================================
 sector_benchmarks = {
-    "Technology":      {"PE": 25, "PB": 6,  "ROE": 18, "ProfitMargin": 15},
-    "Healthcare":      {"PE": 20, "PB": 4,  "ROE": 14, "ProfitMargin": 12},
+    "Technology": {"PE": 25, "PB": 6, "ROE": 18, "ProfitMargin": 15},
+    "Healthcare": {"PE": 20, "PB": 4, "ROE": 14, "ProfitMargin": 12},
     "Financial Services": {"PE": 14, "PB": 1.5, "ROE": 10, "ProfitMargin": 20},
     "Consumer Defensive": {"PE": 22, "PB": 3.5, "ROE": 15, "ProfitMargin": 10},
-    "Industrials":     {"PE": 18, "PB": 2.5, "ROE": 12, "ProfitMargin": 8},
-    "Energy":          {"PE": 12, "PB": 1.8, "ROE": 16, "ProfitMargin": 10},
-    "Unknown":         {"PE": 20, "PB": 3,  "ROE": 12, "ProfitMargin": 10}
+    "Industrials": {"PE": 18, "PB": 2.5, "ROE": 12, "ProfitMargin": 8},
+    "Energy": {"PE": 12, "PB": 1.8, "ROE": 16, "ProfitMargin": 10},
+    "Unknown": {"PE": 20, "PB": 3, "ROE": 12, "ProfitMargin": 10}
 }
 benchmarks = sector_benchmarks.get(sector, sector_benchmarks["Unknown"])
 
@@ -309,3 +312,4 @@ try:
     st.line_chart(stock.financials.loc['Total Revenue'], use_container_width=True)
 except KeyError:
     st.warning("Revenue data is not available.")
+
