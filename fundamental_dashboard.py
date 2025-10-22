@@ -13,42 +13,53 @@ def format_value(value, decimals=2, pad=10, is_percentage=False):
 
 # --- Helper: Safe metric extraction ---
 def safe_get(info, key, default=None):
-    return info[key] if key in info and info[key] is not None else default
+    try:
+        val = info.get(key, default)
+        if val is None or (isinstance(val, float) and pd.isna(val)):
+            return default
+        return val
+    except Exception:
+        return default
 
-# --- Streamlit page setup ---
+# --- Streamlit setup ---
 st.set_page_config(page_title="Fundamental Stock Analysis Dashboard", layout="wide")
 st.title("📊 Fundamental Stock Analysis Dashboard")
 
-# --- User input ---
+# --- Input ---
 ticker_input = st.text_input("Enter a stock ticker symbol (e.g., AAPL, MSFT, TSLA):", "AAPL").upper()
 ticker = yf.Ticker(ticker_input)
 
+# --- Try multiple info sources ---
 try:
-    info = ticker.info
+    info = ticker.get_info()
+    if not info:  # fallback if empty
+        info = ticker.fast_info
 except Exception:
+    info = {}
+
+if not info:
     st.error("Failed to retrieve data. Try another ticker.")
     st.stop()
 
-# --- Extract key metrics ---
-market_cap = safe_get(info, "marketCap")
-trailing_pe = safe_get(info, "trailingPE")
-forward_pe = safe_get(info, "forwardPE")
+# --- Extract metrics safely ---
+market_cap = safe_get(info, "marketCap") or safe_get(info, "market_cap")
+trailing_pe = safe_get(info, "trailingPE") or safe_get(info, "trailing_pe")
+forward_pe = safe_get(info, "forwardPE") or safe_get(info, "forward_pe")
 peg_ratio = safe_get(info, "pegRatio")
 roe = safe_get(info, "returnOnEquity")
 profit_margin = safe_get(info, "profitMargins")
-dividend_yield = safe_get(info, "dividendYield")
+dividend_yield = safe_get(info, "dividendYield") or safe_get(info, "dividend_yield")
 operating_margin = safe_get(info, "operatingMargins")
 debt_to_equity = safe_get(info, "debtToEquity")
 
-# --- Convert ratios to percentages where needed ---
+# --- Convert ratios ---
 if isinstance(roe, (int, float)): roe *= 100
 if isinstance(profit_margin, (int, float)): profit_margin *= 100
 if isinstance(operating_margin, (int, float)): operating_margin *= 100
-if isinstance(debt_to_equity, (int, float)): debt_to_equity /= 100  # Convert to decimal
+if isinstance(debt_to_equity, (int, float)): debt_to_equity /= 100
 
 # --- Display Overview ---
 st.header(f"Company Overview: {ticker_input}")
-
 col1, col2, col3 = st.columns(3)
 col1.metric("Market Cap", f"${market_cap:,.0f}" if market_cap else "N/A")
 col2.metric("Trailing P/E", f"{trailing_pe:.2f}" if trailing_pe else "N/A")
@@ -56,19 +67,13 @@ col3.metric("Forward P/E", f"{forward_pe:.2f}" if forward_pe else "N/A")
 
 st.divider()
 
-# --- Display Key Ratios ---
+# --- Key Ratios ---
 st.header("📈 Key Ratios and Profitability")
-
 st.write("Return on Equity (ROE): ", format_value(roe, 2, 10, is_percentage=True), unsafe_allow_html=True)
 st.write("Profit Margin: ", format_value(profit_margin, 2, 10, is_percentage=True), unsafe_allow_html=True)
 st.write(
     "Dividend Yield: ",
-    format_value(
-        dividend_yield if isinstance(dividend_yield, (int, float)) else None,
-        2,
-        10,
-        is_percentage=True
-    ),
+    format_value(dividend_yield if isinstance(dividend_yield, (int, float)) else None, 2, 10, is_percentage=True),
     unsafe_allow_html=True
 )
 st.write("Operating Margin: ", format_value(operating_margin, 2, 10, is_percentage=True), unsafe_allow_html=True)
@@ -77,7 +82,7 @@ st.write("PEG Ratio: ", format_value(peg_ratio, 2, 10), unsafe_allow_html=True)
 
 st.divider()
 
-# --- Define scoring logic ---
+# --- Scoring logic ---
 def score_pe(pe):
     if pe is None: return 0
     if pe < 10: return 10
@@ -104,7 +109,7 @@ def score_profit_margin(pm):
 
 def score_dividend_yield(dy):
     if dy is None: return 0
-    dy *= 100  # convert decimal to %
+    dy *= 100
     if dy > 5: return 10
     elif dy > 3: return 8
     elif dy > 2: return 6
@@ -149,5 +154,6 @@ elif overall_score >= 5:
     st.warning("⚠️ Mixed fundamentals — further analysis recommended.")
 else:
     st.error("❌ Weak fundamentals — proceed with caution.")
+
 
 
