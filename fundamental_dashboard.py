@@ -118,6 +118,8 @@ debt_to_equity = info.get("debtToEquity", "N/A")
 market_cap = info.get("marketCap", "N/A")
 profit_margin = info.get("profitMargins", "N/A")
 dividend_yield = info.get("dividendYield", "N/A")
+if isinstance(dividend_yield, (int, float)):
+    dividend_yield /= 100
 operating_margin = info.get("operatingMargins", "N/A")
 beta = info.get("beta", "N/A")
 current_ratio = info.get("currentRatio", "N/A")
